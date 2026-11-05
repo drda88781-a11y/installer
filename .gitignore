@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller & Build artifacts
+build/
+dist/
+*.exe
+*.manifest
+
+# Heavy setup and backup directories (> 100MB)
+SETUP/
+SETUP.rar
+exe full/
+exe full_BACKUP/
+scratch/
+logging_backup_shadow_resolved/
+*.rar
+*.zip
+*.7z
+*.tar
+*.iso
+
+# Caches and test logs
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.log
+flake8_report.txt
+mypy_all_errors.txt
+mypy_report.txt
+mypy_untyped_errors.txt
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
