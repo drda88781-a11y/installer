@@ -5,6 +5,7 @@ Multi-tier universal archive extractor (ZIP, RAR, 7Z, SQL) and process unlocking
 """
 
 import os
+import sys
 from pathlib import Path
 import shutil
 import subprocess
@@ -42,6 +43,23 @@ def find_archive_tool() -> Optional[Tuple[str, Path]]:
     یافتن هوشمند ابزارهای اکسترکت نصب شده در سیستم (WinRAR یا 7-Zip یا UnRAR)
     خروجی: (نوع ابزار 'winrar'/'7z', مسیر فایل اجرایی)
     """
+    # ۰. جستجو در ابزارهای داخلی همراه اینستالر (Bundled Tools)
+    current_dir = Path(__file__).resolve().parent
+    base_dir = current_dir.parent
+    bundled = [
+        ("winrar", current_dir / "UnRAR.exe"),
+        ("winrar", base_dir / "assets" / "bin" / "UnRAR.exe"),
+    ]
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        meipass = Path(sys._MEIPASS)
+        bundled.insert(0, ("winrar", meipass / "UnRAR.exe"))
+        bundled.insert(1, ("winrar", meipass / "assets" / "bin" / "UnRAR.exe"))
+        bundled.insert(2, ("winrar", meipass / "utils" / "UnRAR.exe"))
+
+    for kind, p in bundled:
+        if p.exists() and p.is_file():
+            return kind, p
+
     # ۱. جستجو در مسیرهای مستقیم معروف
     candidates = [
         ("winrar", Path(r"C:\Program Files\WinRAR\UnRAR.exe")),
@@ -90,8 +108,24 @@ def inspect_archive(archive_path: Path) -> ArchiveInspectionResult:
     res = ArchiveInspectionResult()
     res.archive_path = archive_path
 
-    if not archive_path.exists() or not archive_path.is_file():
-        res.message = "فایل انتخاب‌شده در مسیر مشخص‌شده وجود ندارد."
+    if not archive_path.exists():
+        res.message = "فایل یا پوشه انتخاب‌شده در مسیر مشخص‌شده وجود ندارد."
+        return res
+
+    if archive_path.is_dir():
+        res.file_type = "DIR"
+        res.is_valid = True
+        all_entries = list(archive_path.rglob("*"))
+        files = [f for f in all_entries if f.is_file()]
+        res.total_files_count = len(files)
+        res.total_size_bytes = sum(f.stat().st_size for f in files)
+        res.has_files_folder = any(d.is_dir() and d.name.lower() == "files" for d in all_entries)
+        res.has_data_folder = any(d.is_dir() and d.name.lower() == "data" for d in all_entries)
+        res.mdf_files = [f.name for f in files if f.suffix.lower() == ".mdf"]
+        res.ldf_files = [f.name for f in files if f.suffix.lower() == ".ldf"]
+        res.sql_files = [f.name for f in files if f.suffix.lower() == ".sql"]
+        res.exe_files = [f.name for f in files if f.suffix.lower() == ".exe"]
+        res.message = f"پوشه به‌روزرسانی شامل {res.total_files_count} فایل"
         return res
 
     res.total_size_bytes = archive_path.stat().st_size

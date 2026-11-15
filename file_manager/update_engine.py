@@ -532,6 +532,7 @@ def is_safe_path(base_dir: Path, target_path: Path) -> bool:
 
 def validate_update_archive(archive_path: Path) -> UpdateValidationReport:
     from file_manager.update_package import UpdatePackage
+    from utils.archive_extractor import inspect_archive
     report = UpdateValidationReport()
     report.archive_path = archive_path
     try:
@@ -549,7 +550,25 @@ def validate_update_archive(archive_path: Path) -> UpdateValidationReport:
             report.main_exe_name = report.detected_exes[0] if report.detected_exes else None
             report.mdf_files = [entry.path for entry in package.files if entry.kind == "data" and entry.path.lower().endswith(".mdf")]
             report.ldf_files = [entry.path for entry in package.files if entry.kind == "data" and entry.path.lower().endswith(".ldf")]
+            return report
     except Exception as exc:
+        # در صورت نبود شناسنامه رسمی، بازرسی بسته بر اساس ساختار استاندارد data / files انجام می‌شود
+        insp = inspect_archive(archive_path)
+        if insp.is_valid:
+            report.is_valid = True
+            report.package_version = "به‌روزرسانی حسابداری بازرگانی"
+            report.products = ["SEPEHRYAR.Hesabdari"]
+            report.has_files_folder = insp.has_files_folder
+            report.has_data_folder = insp.has_data_folder
+            report.files_count = insp.total_files_count
+            report.zip_file_size_bytes = insp.total_size_bytes
+            report.mdf_files = insp.mdf_files
+            report.ldf_files = insp.ldf_files
+            report.detected_exes = insp.exe_files
+            report.main_exe_name = "Hesabdari.exe" if "Hesabdari.exe" in insp.exe_files else (insp.exe_files[0] if insp.exe_files else "Hesabdari.exe")
+            report.error_message = ""
+            return report
+
         report.error_message = str(exc)
     return report
 

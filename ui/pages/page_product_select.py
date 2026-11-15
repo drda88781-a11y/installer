@@ -1,7 +1,7 @@
 # ui/pages/page_product_select.py
 """
 صفحه ۳: انتخاب محصولات و پکیج‌های نرم‌افزار حسابداری سپهریار
-Page 3: SEPEHRYAR Software Products Multi-Selection
+Page 3: SEPEHRYAR Software Products Multi-Selection with Role-Based Access Control
 """
 
 from typing import List, Set
@@ -21,7 +21,7 @@ from ui.components.gold_card import SelectableProductCard
 
 class ProductSelectPage(QWidget):
     """
-    صفحه انتخاب چندگانه محصولات سپهریار با کارت‌های لوکس
+    صفحه انتخاب چندگانه محصولات سپهریار با کارت‌های لوکس و تفکیک دسترسی
     """
     selection_changed = Signal(list, bool)  # selected_ids, is_valid
 
@@ -33,6 +33,7 @@ class ProductSelectPage(QWidget):
         self.install_mode: str = "server"
         self.sql_version: str = "2019"
         self.sql_instance_name: str = ""
+        self.user_role: str = "admin"  # "admin" or "commercial"
         self._init_ui()
 
     def _init_ui(self):
@@ -79,17 +80,21 @@ class ProductSelectPage(QWidget):
         self.selection_summary_lbl.setStyleSheet(f"color: {THEME_COLORS['text_primary']}; font-size: 14px; font-weight: bold;")
         bottom_bar.addWidget(self.selection_summary_lbl, stretch=1)
 
-        btn_select_all = QPushButton("انتخاب همه", self)
-        btn_select_all.setProperty("class", "GoldSecondary")
-        btn_select_all.clicked.connect(self.select_all)
-        bottom_bar.addWidget(btn_select_all)
+        self.btn_select_all = QPushButton("انتخاب همه", self)
+        self.btn_select_all.setProperty("class", "GoldSecondary")
+        self.btn_select_all.clicked.connect(self.select_all)
+        bottom_bar.addWidget(self.btn_select_all)
 
-        btn_clear_all = QPushButton("لغو انتخاب‌ها", self)
-        btn_clear_all.setProperty("class", "GoldSecondary")
-        btn_clear_all.clicked.connect(self.clear_all)
-        bottom_bar.addWidget(btn_clear_all)
+        self.btn_clear_all = QPushButton("لغو انتخاب‌ها", self)
+        self.btn_clear_all.setProperty("class", "GoldSecondary")
+        self.btn_clear_all.clicked.connect(self.clear_all)
+        bottom_bar.addWidget(self.btn_clear_all)
 
         main_layout.addLayout(bottom_bar)
+
+    def set_user_role(self, role: str):
+        """تنظیم سطح دسترسی کاربر جاری ('admin' یا 'commercial')"""
+        self.user_role = role or "admin"
 
     def set_sql_version(self, version: str):
         """تنظیم نسخه انتخابی SQL Server"""
@@ -117,7 +122,7 @@ class ProductSelectPage(QWidget):
 
     def load_products(self):
         """
-        بارگذاری مشخصات محصولات از کاتالوگ و نمایش کارت‌ها بر اساس حالت سرور یا کلاینت
+        بارگذاری مشخصات محصولات از کاتالوگ و نمایش کارت‌ها بر اساس حالت سرور یا کلاینت و نقش کاربر
         """
         while self.cards_layout.count():
             item = self.cards_layout.takeAt(0)
@@ -130,37 +135,69 @@ class ProductSelectPage(QWidget):
         self.selected_ids.clear()
 
         is_client = (self.install_mode == "client")
-        if is_client:
+        is_commercial_only = (self.user_role == "commercial")
+
+        if is_commercial_only:
+            self.title_lbl.setText("نصب اختصاصی حسابداری بازرگانی سپهریار")
+            self.sub_lbl.setText(
+                "سطح دسترسی شما محدود به نصب و استقرار بسته «حسابداری بازرگانی» می‌باشد."
+            )
+            self.btn_select_all.setVisible(False)
+            self.btn_clear_all.setVisible(False)
+        elif is_client:
             self.title_lbl.setText("انتخاب محصول سپهریار (حالت کلاینت)")
             self.sub_lbl.setText(
                 "در حالت کلاینت، نرم‌افزار مکانیزه فروش سپهریار (Client) همراه با کلیه فایل‌های Setup، فونت‌ها و گزارش‌سازها بدون نیاز به پایگاه داده SQL Server نصب می‌گردد."
             )
+            self.btn_select_all.setVisible(True)
+            self.btn_clear_all.setVisible(True)
         else:
             self.title_lbl.setText("انتخاب محصول سپهریار (حالت سرور)")
             self.sub_lbl.setText(
                 "محصولات مورد نظر خود را جهت نصب روی سرور انتخاب نمایید. در صورت انتخاب حسابداری یا صنعتی، پایگاه داده SQL Server نصب خواهد شد."
             )
+            self.btn_select_all.setVisible(True)
+            self.btn_clear_all.setVisible(True)
 
         for p in self.products:
-            if is_client:
+            if is_commercial_only:
+                # کاربر تجاری فقط و فقط حسابداری را می‌بیند و نصب می‌کند
+                if p.id == "SEPEHRYAR.Hesabdari":
+                    default_checked = True
+                    self.selected_ids.add(p.id)
+                    card = SelectableProductCard(p, is_checked=True, parent=self.cards_container)
+                    card.checkbox.setEnabled(False)  # قفل چک‌باکس روی فعال
+                    self.cards_layout.addWidget(card)
+                    self.card_widgets.append(card)
+                else:
+                    # سایر محصولات نمایش داده نمی‌شوند
+                    pass
+            elif is_client:
                 # در حالت کلاینت، پیش‌فرض سیستم فروش (Client) انتخاب می‌شود
                 default_checked = (p.id == "SEPEHRYAR.Client")
+                if default_checked:
+                    self.selected_ids.add(p.id)
+                card = SelectableProductCard(p, is_checked=default_checked, parent=self.cards_container)
+                card.toggled.connect(self._on_card_toggled)
+                self.cards_layout.addWidget(card)
+                self.card_widgets.append(card)
             else:
-                # در حالت سرور، بدون انتخاب پیش‌فرض تا کاربر محصول مد نظر خود را آگاهانه انتخاب کند
+                # در حالت سرور برای ادمین، همه محصولات در دسترس هستند
                 default_checked = False
-
-            if default_checked:
-                self.selected_ids.add(p.id)
-
-            card = SelectableProductCard(p, is_checked=default_checked, parent=self.cards_container)
-            card.toggled.connect(self._on_card_toggled)
-            self.cards_layout.addWidget(card)
-            self.card_widgets.append(card)
+                card = SelectableProductCard(p, is_checked=default_checked, parent=self.cards_container)
+                card.toggled.connect(self._on_card_toggled)
+                self.cards_layout.addWidget(card)
+                self.card_widgets.append(card)
 
         self.cards_layout.addStretch()
         self._update_summary()
 
     def _on_card_toggled(self, product_id: str, checked: bool):
+        if self.user_role == "commercial":
+            self.selected_ids = {"SEPEHRYAR.Hesabdari"}
+            self._update_summary()
+            return
+
         if checked:
             self.selected_ids.add(product_id)
         else:
@@ -168,14 +205,38 @@ class ProductSelectPage(QWidget):
         self._update_summary()
 
     def select_all(self):
+        if self.user_role == "commercial":
+            return
         for card in self.card_widgets:
             card.checkbox.setChecked(True)
 
     def clear_all(self):
+        if self.user_role == "commercial":
+            return
         for card in self.card_widgets:
             card.checkbox.setChecked(False)
 
     def _update_summary(self):
+        if self.user_role == "commercial":
+            self.selected_ids = {"SEPEHRYAR.Hesabdari"}
+            self.selection_summary_lbl.setText("✓ نرم‌افزار حسابداری بازرگانی برای نصب آماده است.")
+            self.selection_summary_lbl.setStyleSheet(f"color: {THEME_COLORS['success']}; font-size: 14px; font-weight: bold;")
+            self.sql_notice_lbl.setText(f"⚡ حسابداری بازرگانی: نیازمند پایگاه داده Microsoft SQL Server {self.sql_version} (پایگاه داده به همراه بسته آپدیت آماده‌سازی می‌شود)")
+            self.sql_notice_lbl.setStyleSheet(f"""
+                QLabel {{
+                    background-color: rgba(216, 168, 78, 0.15);
+                    color: #FCD34D;
+                    border: 1px solid rgba(216, 168, 78, 0.5);
+                    border-radius: 8px;
+                    padding: 8px 14px;
+                    font-size: 13px;
+                    font-weight: bold;
+                }}
+            """)
+            self.sql_notice_lbl.setVisible(True)
+            self.selection_changed.emit(list(self.selected_ids), True)
+            return
+
         count = len(self.selected_ids)
         is_valid = (count > 0)
         if is_valid:
@@ -219,4 +280,6 @@ class ProductSelectPage(QWidget):
         self.selection_changed.emit(list(self.selected_ids), is_valid)
 
     def get_selected_products(self) -> List[str]:
+        if self.user_role == "commercial":
+            return ["SEPEHRYAR.Hesabdari"]
         return list(self.selected_ids)

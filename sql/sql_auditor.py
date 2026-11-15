@@ -400,13 +400,13 @@ class SQLInstanceAuditor:
 
         try:
             cursor = conn.cursor()
-            content = script_path.read_text(encoding="utf-8", errors="replace")
+            content = script_path.read_text(encoding="utf-8-sig", errors="replace").lstrip("\ufeff\uffef \t\r\n")
 
             # تفکیک دقیق تمام فرم‌های GO در خطوط مجزا بدون حساسیت به حروف بزرگ/کوچک
             batches = re.split(r"(?im)^\s*GO\s*(?:--.*)?$", content)
             executed_batches = 0
             for batch in batches:
-                clean_b = batch.strip()
+                clean_b = batch.strip().lstrip("\ufeff\uffef \t\r\n")
                 if clean_b:
                     cursor.execute(clean_b)
                     executed_batches += 1

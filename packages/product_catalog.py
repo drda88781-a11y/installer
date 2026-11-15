@@ -77,6 +77,13 @@ def resolve_installed_exe_path(root_install_dir: Path, product_id: str) -> Optio
     if alt_path.exists():
         return alt_path
 
+    # جستجوی عمیق درون پوشه محصول در صورت وجود ساختار تو در تو
+    p_folder = root_install_dir / folder_name
+    if p_folder.exists() and p_folder.is_dir():
+        found = list(p_folder.rglob(main_exe))
+        if found:
+            return found[0]
+
     return expected_path
 
 

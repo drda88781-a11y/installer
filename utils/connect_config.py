@@ -44,9 +44,19 @@ def test_server_connection(host_or_target: str, default_port: int = 1433, timeou
 def update_connect_xml(file_path: Path, server_target: str, db_name: Optional[str] = None) -> bool:
     """
     به‌روزرسانی رشته اتصال در فایل XML بدون دستکاری بقیه مقادیر (نظیر پسورد رمزگذاری‌شده)
+    در صورت عدم وجود فایل، ساخت مستقیم آن با فرمت UTF-16 استاندارد
     """
     if not file_path.exists():
-        return False
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            init_cat = f";Initial Catalog={db_name}" if db_name else ""
+            content = f'<?xml version="1.0" encoding="utf-16"?>\n<Connection>Data Source={server_target}{init_cat};Integrated Security=True</Connection>'
+            file_path.write_bytes(content.encode("utf-16"))
+            logger.log("CONNECT_CONFIG", "CREATE", "SUCCESS", f"فایل {file_path.name} با Data Source={server_target} و Initial Catalog={db_name} ایجاد شد.")
+            return True
+        except Exception as ex:
+            logger.log("CONNECT_CONFIG", "CREATE_ERROR", "ERROR", f"خطا در ایجاد فایل {file_path.name}: {ex}")
+            return False
 
     raw = file_path.read_bytes()
     # تشخیص انکودینگ: UTF-16LE یا UTF-8
@@ -128,3 +138,44 @@ def update_all_connect_files_in_folder(folder_path: Path, server_target: str, db
             updated_count += 1
 
     return updated_count
+
+
+def configure_hesabdari_connection(
+    root_dir: Path,
+    server_target: str,
+    db_name: str = "Sepehr_Main_1405"
+) -> bool:
+    """
+    تنظیم کامل و تضمین اتصال پوشه حسابداری بازرگانی (SEPEHRYAR.Hesabdari)
+    به اینستنس SQL Server و دیتابیس اتچ شده
+    """
+    clean_srv = (server_target or "").strip()
+    if not clean_srv or clean_srv.upper() in ("MSSQLSERVER", "(DEFAULT)", "DEFAULT", ".\\MSSQLSERVER"):
+        clean_srv = "."
+
+    hesabdari_dir = root_dir / "SEPEHRYAR.Hesabdari"
+    if not hesabdari_dir.exists():
+        hesabdari_dir.mkdir(parents=True, exist_ok=True)
+
+    nested_hesabdari_dir = hesabdari_dir / "SEPEHRYAR.Hesabdari"
+    if not nested_hesabdari_dir.exists():
+        nested_hesabdari_dir.mkdir(parents=True, exist_ok=True)
+
+    # به‌روزرسانی کلیه فایل‌های کانکت موجود
+    count = update_all_connect_files_in_folder(hesabdari_dir, clean_srv, db_name)
+
+    # ایجاد و تضمین حضور همزمان هر دو نام conect.xml و connect.xml در پوشه اصلی و زیرپوشه
+    target_locations = [
+        hesabdari_dir / "conect.xml",
+        hesabdari_dir / "connect.xml",
+        nested_hesabdari_dir / "conect.xml",
+        nested_hesabdari_dir / "connect.xml",
+    ]
+
+    for loc in target_locations:
+        if update_connect_xml(loc, clean_srv, db_name):
+            count += 1
+
+    logger.log("CONNECT_CONFIG", "HESABDARI", "SUCCESS", f"تعداد {count} فایل اتصال حسابداری با سرور {clean_srv} و دیتابیس {db_name} تنظیم گردید.")
+    return True
+

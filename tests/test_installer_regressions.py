@@ -397,7 +397,7 @@ class WindowTests(SafeTestCase):
         with patch.object(SystemCheckPage, "run_check"):
             window = MainWindow()
         self.addCleanup(window.deleteLater)
-        self.assertEqual(window.stack.count(), 6)
+        self.assertEqual(window.stack.count(), 7)
         self.assertEqual(window.stack.currentIndex(), 0)
 
     def window(self):
@@ -450,6 +450,51 @@ class WindowTests(SafeTestCase):
         window.worker.isRunning.return_value = False
         window._on_worker_thread_finished()
         window.close.assert_called_once()
+
+    def test_copy_data_files_copies_mdf_ndf_ldf_and_permission(self):
+        import tempfile
+        from file_manager.update_manager import UpdateManager
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            manager = UpdateManager(root_dir=root, selected_product_ids=["SEPEHRYAR.Hesabdari"], install_mode="server")
+            source = root / "update_pkg" / "Data"
+            source.mkdir(parents=True)
+            (source / "Sepehr_Main_1405.mdf").write_bytes(b"MDF_DATA")
+            (source / "Sepehr_Main_1405.ndf").write_bytes(b"NDF_DATA")
+            (source / "Sepehr_Main_1405.ldf").write_bytes(b"LDF_DATA")
+            (source / "Permission.cmd").write_text("icacls *", encoding="utf-8")
+
+            ok, msg, mdfs = manager.copy_data_files(source.parent)
+            self.assertTrue(ok)
+            self.assertTrue((manager.data_dir / "Sepehr_Main_1405.mdf").exists())
+            self.assertTrue((manager.data_dir / "Sepehr_Main_1405.ndf").exists())
+            self.assertTrue((manager.data_dir / "Sepehr_Main_1405.ldf").exists())
+            self.assertTrue((manager.data_dir / "Permission.cmd").exists())
+            self.assertEqual((manager.data_dir / "Sepehr_Main_1405.ndf").read_bytes(), b"NDF_DATA")
+
+    def test_configure_hesabdari_creates_both_xml_variants(self):
+        import tempfile
+        from utils.connect_config import configure_hesabdari_connection
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "SEPEHRYAR"
+            root.mkdir(parents=True)
+            ok = configure_hesabdari_connection(root, ".", "Sepehr_Main_1405")
+            self.assertTrue(ok)
+            h_dir = root / "SEPEHRYAR.Hesabdari"
+            self.assertTrue((h_dir / "conect.xml").exists())
+            self.assertTrue((h_dir / "connect.xml").exists())
+            self.assertTrue((h_dir / "SEPEHRYAR.Hesabdari" / "conect.xml").exists())
+            self.assertTrue((h_dir / "SEPEHRYAR.Hesabdari" / "connect.xml").exists())
+            content = (h_dir / "conect.xml").read_bytes().decode("utf-16")
+            self.assertIn("Initial Catalog=Sepehr_Main_1405", content)
+            self.assertIn("Data Source=.", content)
+
+    def test_keygen_dialog_password_field_is_masked(self):
+        from ui.dialogs.keygen_dialog import KeygenDialog
+        from PySide6.QtWidgets import QLineEdit
+        dlg = KeygenDialog(parent=None)
+        self.assertEqual(dlg.txt_pass.echoMode(), QLineEdit.Password)
+        self.assertTrue(dlg.txt_pass.isReadOnly())
 
 
 if __name__ == "__main__":

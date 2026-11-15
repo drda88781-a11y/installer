@@ -536,10 +536,69 @@ class InstallWorker(QThread):
                 dst = self.root_path / (cfg.folder_name if cfg else pid)
                 update_all_connect_files_in_folder(dst, effective_target)
 
+        # ── استقرار خودکار فایل‌های داده (SEPEHRYAR.Data)، اتچ و اجرای دستورات پایگاه داده ──
+        if requires_sql(self.selected_product_ids, install_mode=self.install_mode):
+            self._deploy_base_data_and_database(effective_target)
+
         return True, f"تعداد {total_copied_files} فایل نرم‌افزار به پوشه نصب کپی شد."
 
+    def _deploy_base_data_and_database(self, effective_target: str):
+        """
+        کپی فایل‌های پایگاه داده از SETUP/Data به SEPEHRYAR.Data،
+        اتچ در SQL Server، اجرای پروسیجر sp_insert_defaultdata، اعمال Permission و پچ‌ها، و تنظیم conect.xml
+        """
+        try:
+            from file_manager.update_manager import UpdateManager
+            from utils.connect_config import configure_hesabdari_connection
+
+            setup_data_candidates = []
+            if self.setup_target_dir:
+                setup_data_candidates.append(self.setup_target_dir / "Data")
+            setup_data_candidates.append(SETUP_DIR / "Data")
+
+            src_data_dir = next((d for d in setup_data_candidates if d.exists() and d.is_dir()), None)
+            if not src_data_dir:
+                logger.log("WORKER", "BASE_DATA", "INFO", "پوشه دیتای اولیه در Setup یافت نشد.")
+                return
+
+            mgr = UpdateManager(
+                root_dir=self.root_path,
+                selected_product_ids=self.selected_product_ids,
+                install_mode=self.install_mode,
+                sql_version=self.sql_version,
+                sql_instance=self.sql_instance_name,
+                server_target=self.server_target or effective_target,
+            )
+
+            # ۱. کپی فایل‌های دیتا به SEPEHRYAR.Data
+            ok_copy, msg_copy, mdfs = mgr.copy_data_files(src_data_dir)
+            logger.log("WORKER", "BASE_DATA_COPY", "INFO" if ok_copy else "WARN", msg_copy)
+
+            # ۲. اعمال دسترسی کامل و اجرای فایل Permission قبل از اتچ
+            mgr._grant_folder_permissions(mgr.data_dir)
+            mgr.process_permission_file(mgr.data_dir)
+
+            # ۳. اتچ دیتابیس‌ها
+            ok_att, msg_att, attached_dbs = mgr.attach_databases(mdfs)
+            logger.log("WORKER", "BASE_DATA_ATTACH", "INFO" if ok_att else "WARN", msg_att)
+
+            primary_db = attached_dbs[0] if attached_dbs else "Sepehr_Main_1405"
+
+            # ۴. اجرای پروسیجر ضروری sp_insert_defaultdata
+            mgr.execute_default_data_procedure(primary_db)
+
+            # ۵. اجرای پچ‌های SQL
+            mgr.execute_sql_patch_scripts(src_data_dir, target_db=primary_db)
+
+            # ۶. پیکربندی کامل فایل‌های conect.xml و connect.xml
+            configure_hesabdari_connection(self.root_path, effective_target, primary_db)
+            logger.log("WORKER", "BASE_DATA", "SUCCESS", f"پایگاه داده {primary_db} با موفقیت آماده‌سازی و متصل شد.")
+
+        except Exception as ex_data:
+            logger.log("WORKER", "BASE_DATA", "WARN", f"هشدار در استقرار دیتای اولیه: {ex_data}")
+
     def _step_apply_update(self, overall_base: int, total_stages: int) -> Tuple[bool, str]:
-        if not self.update_archive_path or not self.update_archive_path.is_file():
+        if not self.update_archive_path or not (self.update_archive_path.is_file() or self.update_archive_path.is_dir()):
             return False, "بسته آپدیت انتخاب‌شده دیگر در دسترس نیست."
 
         if not self.root_path:

@@ -35,6 +35,7 @@ def build():
     # آرگومان‌های داده‌های همراه
     add_data_args = [
         f"--add-data={BASE_DIR / 'assets'};assets",
+        f"--add-data={BASE_DIR / 'utils'};utils",
     ]
     if (BASE_DIR / "AradVF.ttf").exists():
         add_data_args.append(f"--add-data={BASE_DIR / 'AradVF.ttf'};.")
@@ -49,6 +50,8 @@ def build():
         "--hidden-import=pyodbc",
         "--hidden-import=pefile",
         "--hidden-import=psutil",
+        "--hidden-import=utils.sepehryar_keygen",
+        "--hidden-import=ui.dialogs.keygen_dialog",
     ]
 
     cmd = [

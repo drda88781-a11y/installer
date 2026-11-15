@@ -32,6 +32,7 @@ from packages.product_catalog import get_product_by_id, resolve_installed_exe_pa
 from system_check.hardware_checker import get_cpu_info, get_physical_ram_gb, get_windows_info
 from utils.icon_factory import IconFactory
 from utils.report_generator import generate_installation_mrt, show_print_preview_dialog
+from ui.dialogs.keygen_dialog import KeygenDialog
 
 
 class FinalPage(QWidget):
@@ -285,11 +286,24 @@ class FinalPage(QWidget):
 
         self.btn_launch = QPushButton("اجرای سپهریار", btn_frame)
         self.btn_launch.setProperty("class", "GoldPrimary")
-        self.btn_launch.setMinimumWidth(140)
+        self.btn_launch.setMinimumWidth(130)
         self.btn_launch.setFixedHeight(40)
         self.btn_launch.setIcon(IconFactory.get_icon("play", size=16, color_override="#000000"))
         self.btn_launch.clicked.connect(self._launch_app)
         btn_layout.addWidget(self.btn_launch)
+
+        self.btn_keygen = QPushButton("🔑 فعال‌سازی قفل (کیجن)", btn_frame)
+        self.btn_keygen.setProperty("class", "GoldSecondary")
+        self.btn_keygen.setMinimumWidth(150)
+        self.btn_keygen.setFixedHeight(40)
+        self.btn_keygen.setIcon(IconFactory.get_icon("key", size=16))
+        self.btn_keygen.clicked.connect(self._open_keygen_dialog)
+        # دکمه کیجن به صورت پیش‌فرض کاملاً مخفی است تا مشتری متوجه قفل‌شکن نشود
+        # صرفاً تکنسین مجاز با زدن کلید میانبر محرمانه Ctrl+Shift+K می‌تواند آن را مشاهده و باز کند
+        self.btn_keygen.setVisible(False)
+        from PySide6.QtGui import QKeySequence, QShortcut
+        self.shortcut_secret_keygen = QShortcut(QKeySequence("Ctrl+Shift+K"), self)
+        self.shortcut_secret_keygen.activated.connect(self._toggle_keygen_button)
 
         self.btn_open_folder = QPushButton("باز کردن پوشه نصب", btn_frame)
         self.btn_open_folder.setProperty("class", "GoldSecondary")
@@ -476,6 +490,10 @@ class FinalPage(QWidget):
                 f"امکان باز کردن مستقیم فایل گزارش در استیمول‌سافت وجود ندارد:\n{ex}"
             )
 
+    def _toggle_keygen_button(self):
+        """نمایش/مخفی‌سازی دکمه کیجن به صورت محرمانه توسط تکنسین"""
+        self.btn_keygen.setVisible(not self.btn_keygen.isVisible())
+
     def _open_folder(self):
         if self.root_install_dir and self.root_install_dir.exists():
             try:
@@ -483,14 +501,39 @@ class FinalPage(QWidget):
             except Exception:
                 subprocess.Popen(["explorer", str(self.root_install_dir)])
 
+    def _open_keygen_dialog(self):
+        """باز کردن دیالوگ کیجن و فعال‌سازی قفل نرم‌افزاری"""
+        first_pid = self.selected_products[0] if self.selected_products else "SEPEHRYAR.Hesabdari"
+        exe_path = resolve_installed_exe_path(self.root_install_dir, first_pid) if self.root_install_dir else None
+        dlg = KeygenDialog(exe_path=exe_path, parent=self)
+        dlg.exec()
+
     def _launch_app(self):
-        """اجرای اولین محصول انتخاب شده"""
+        """اجرای اولین محصول انتخاب شده و بررسی تنظیمات اتصال دیتابیس و بازگشایی پس‌زمینه قفل"""
         if self.root_install_dir and self.selected_products:
             first_pid = self.selected_products[0]
             exe_path = resolve_installed_exe_path(self.root_install_dir, first_pid)
             if exe_path and exe_path.exists():
                 try:
-                    subprocess.Popen([str(exe_path)], cwd=str(exe_path.parent))
+                    # تضمین تنظیم conect.xml قبل از باز شدن برنامه
+                    from utils.connect_config import configure_hesabdari_connection
+                    inst = self.sql_instance or get_sql_instance_name(self.sql_version)
+                    server_target = f".\\{inst}"
+                    configure_hesabdari_connection(self.root_install_dir, server_target, "Sepehr_Main_1405")
+                except Exception:
+                    pass
+
+                try:
+                    # باز کردن برنامه و اتوماسیون بی‌صدا قفل در پس‌زمینه بدون افشای رمز
+                    import threading
+                    from utils.sepehryar_keygen import auto_unlock_sepehryar_app
+                    
+                    def bg_unlock():
+                        auto_unlock_sepehryar_app(exe_path, timeout_sec=20)
+
+                    th = threading.Thread(target=bg_unlock, daemon=True)
+                    th.start()
                 except Exception as ex:
                     print(f"Error launching app: {ex}")
+        self.launch_requested.emit()
         self.launch_requested.emit()

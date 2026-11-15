@@ -106,14 +106,16 @@ def main():
     stylesheet = get_application_stylesheet(font_family)
     app.setStyleSheet(stylesheet)
 
-    # ۱. احراز هویت با رمز عبور امنیتی قبل از باز شدن پنجره اصلی
+    # ۱. احراز هویت با نام کاربری و رمز عبور امنیتی قبل از باز شدن پنجره اصلی
     auth_dialog = PasswordDialog()
     if auth_dialog.exec() != QDialog.Accepted:
         logger.log("APP", "STARTUP", "CANCELLED", "ورود توسط کاربر لغو شد.")
         sys.exit(0)
 
-    # ۲. ایجاد و نمایش پنجره اصلی پس از ورود موفق رمز عبور
-    window = MainWindow()
+    # ۲. ایجاد و نمایش پنجره اصلی پس از ورود موفق با توجه به سطح دسترسی
+    user_role = getattr(auth_dialog, "get_user_role", lambda: "admin")()
+    username = getattr(auth_dialog, "get_username", lambda: "admin")()
+    window = MainWindow(user_role=user_role, username=username)
     window.show()
 
     logger.log("APP", "STARTUP", "RUNNING", "پنجره اصلی با موفقیت به کاربر نمایش داده شد.")

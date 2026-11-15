@@ -35,7 +35,8 @@ def verify_sql_connection(
     تست اتصال زنده به اینستنس target: .\\SEPEHRYAR2019
     ابتدا با Trusted_Connection (Windows Auth) و در صورت نیاز با SQL Login (sa)
     """
-    target_server = f".\\{instance_name}"
+    inst_clean = (instance_name or "").strip()
+    target_server = "." if inst_clean.upper() in ("MSSQLSERVER", "(DEFAULT)", "DEFAULT", ".") else f".\\{inst_clean}"
     logger.log("SQL", "CONNECTION_TEST", "RUNNING", f"شروع تست اتصال زنده به {target_server}", sql_instance=instance_name)
 
     drivers = [d for d in pyodbc.drivers() if "SQL Server" in d]

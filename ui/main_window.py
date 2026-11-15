@@ -50,8 +50,10 @@ class MainWindow(QMainWindow):
     """
     sig_log_received = Signal(str)
 
-    def __init__(self):
+    def __init__(self, user_role: str = "admin", username: str = "admin"):
         super().__init__()
+        self.user_role = user_role
+        self.username = username
         self.setWindowTitle(f"{APP_NAME_FA} - نسخه {APP_VERSION}")
         self.setMinimumSize(1100, 680)
         self.resize(1220, 750)
@@ -116,6 +118,22 @@ class MainWindow(QMainWindow):
 
         tab_h_layout.addStretch(1)
 
+        # نشانگر سطح کاربری
+        badge_text = "👤 مدیر ارشد (دسترسی کامل)" if self.user_role == "admin" else "👤 کاربر ۱ (حسابداری بازرگانی)"
+        self.lbl_user_badge = QLabel(badge_text, self.top_tab_bar)
+        self.lbl_user_badge.setStyleSheet(f"""
+            QLabel {{
+                color: {THEME_COLORS['gold_hover']};
+                background-color: {THEME_COLORS['card_bg']};
+                border: 1px solid {THEME_COLORS['border_medium']};
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11.5px;
+                font-weight: bold;
+            }}
+        """)
+        tab_h_layout.addWidget(self.lbl_user_badge)
+
         # دکمه‌های ناوبری تب‌ها
         self.btn_tab_server = QPushButton("🏢 نصب سرور مرکزی (پایگاه داده و استقرار)", self.top_tab_bar)
         self.btn_tab_server.setCursor(Qt.PointingHandCursor)
@@ -125,6 +143,8 @@ class MainWindow(QMainWindow):
         self.btn_tab_client = QPushButton("💻 نصب کلاینت (پیش‌نیازها و نسخه‌های اجرایی)", self.top_tab_bar)
         self.btn_tab_client.setCursor(Qt.PointingHandCursor)
         self.btn_tab_client.clicked.connect(self.switch_to_client_mode)
+        if self.user_role == "commercial":
+            self.btn_tab_client.setVisible(False)
         tab_h_layout.addWidget(self.btn_tab_client)
 
         root_v_layout.addWidget(self.top_tab_bar)
@@ -153,6 +173,7 @@ class MainWindow(QMainWindow):
         self.page_system_check = SystemCheckPage(self.stack)
         self.page_drive_select = DriveSelectPage(self.stack)
         self.page_product_select = ProductSelectPage(self.stack)
+        self.page_product_select.set_user_role(self.user_role)
         self.page_update = UpdatePackagePage(self.stack)
         self.page_progress = ProgressDashboardPage(self.stack)
         self.page_final = FinalPage(self.stack)
@@ -226,6 +247,8 @@ class MainWindow(QMainWindow):
 
     def switch_to_client_mode(self):
         """سوئیچ به صفحه مستقل و سریع نصب کلاینت"""
+        if self.user_role == "commercial":
+            return
         self.current_mode = "client"
         self._update_tab_buttons("client")
         self.sidebar.setVisible(False)

@@ -101,7 +101,7 @@ class UpdatePackagePage(QWidget):
         input_layout.setSpacing(10)
 
         self.txt_path = QLineEdit(self.file_card)
-        self.txt_path.setPlaceholderText("مسیر فایل ZIP، RAR یا SQL پچ را انتخاب یا وارد نمایید...")
+        self.txt_path.setPlaceholderText("مسیر پوشه یا فایل ZIP، RAR، SQL پچ را انتخاب یا وارد نمایید...")
         self.txt_path.textChanged.connect(self._on_path_text_changed)
         self.txt_path.setStyleSheet(f"""
             QLineEdit {{
@@ -129,6 +129,13 @@ class UpdatePackagePage(QWidget):
         self.btn_browse.setFixedHeight(36)
         self.btn_browse.clicked.connect(self._browse_archive)
         input_layout.addWidget(self.btn_browse)
+
+        self.btn_browse_folder = QPushButton("انتخاب پوشه...", self.file_card)
+        self.btn_browse_folder.setProperty("class", "GoldSecondary")
+        self.btn_browse_folder.setIcon(IconFactory.get_icon("folder", size=16))
+        self.btn_browse_folder.setFixedHeight(36)
+        self.btn_browse_folder.clicked.connect(self._browse_folder)
+        input_layout.addWidget(self.btn_browse_folder)
 
         file_layout.addLayout(input_layout)
 
@@ -293,10 +300,19 @@ class UpdatePackagePage(QWidget):
             self,
             "انتخاب بسته یا اسکریپت آخرین به‌روزرسانی سپهریار",
             str(Path.home()),
-            "بسته‌های دارای شناسنامه (*.zip *.sql);;بسته ZIP (*.zip);;پچ SQL (*.sql)"
+            "بسته‌های به‌روزرسانی (*.rar *.zip *.7z *.sql);;فایل فشرده RAR (*.rar);;فایل فشرده ZIP (*.zip);;پچ SQL (*.sql);;تمام فایل‌ها (*.*)"
         )
         if filepath:
             self.txt_path.setText(filepath)
+
+    def _browse_folder(self):
+        dirpath = QFileDialog.getExistingDirectory(
+            self,
+            "انتخاب پوشه آخرین به‌روزرسانی سپهریار (حاوی پوشه‌های Data و Files)",
+            str(Path.home()),
+        )
+        if dirpath:
+            self.txt_path.setText(dirpath)
 
     def _on_path_text_changed(self, text: str):
         clean_text = text.strip().strip('"').strip("'")
@@ -310,7 +326,22 @@ class UpdatePackagePage(QWidget):
             return
 
         p = Path(clean_text)
-        is_valid = p.exists() and p.is_file()
+        if not p.exists():
+            for ext in [".rar", ".zip", ".7z"]:
+                candidate = p.with_suffix(ext)
+                if candidate.exists():
+                    p = candidate
+                    break
+
+        # اگر کاربر فایلی را از درون پوشه Data یا Files انتخاب کرده بود، ریشه آپدیت را شناسایی کن
+        if p.exists() and p.is_file():
+            if p.parent.name.lower() in ("data", "files"):
+                p = p.parent.parent
+            elif p.suffix.lower() not in [".rar", ".zip", ".7z", ".sql"]:
+                if (p.parent / "Data").exists() or (p.parent / "Files").exists():
+                    p = p.parent
+
+        is_valid = p.exists() and (p.is_file() or p.is_dir())
         if is_valid:
             report = validate_update_archive(p)
             if not report.is_valid:
@@ -337,7 +368,7 @@ class UpdatePackagePage(QWidget):
                 details.append(f"{len(insp.sql_files)} اسکریپت SQL")
 
             self.lbl_pkg_info.setText(" | ".join(details))
-            self.lbl_status.setText(f"✓ سلامت بسته تأیید شد: {p.name} — نسخه {report.package_version}")
+            self.lbl_status.setText(f"✓ بسته به‌روزرسانی تأیید شد: {p.name} — {report.package_version}")
             self.lbl_status.setStyleSheet(f"color: {THEME_COLORS['success']}; font-size: 12.5px; font-weight: bold;")
             self.selection_changed.emit(True)
         else:
@@ -350,6 +381,7 @@ class UpdatePackagePage(QWidget):
     def _on_skip_toggled(self, checked: bool):
         self.txt_path.setEnabled(not checked)
         self.btn_browse.setEnabled(not checked)
+        self.btn_browse_folder.setEnabled(not checked)
         if checked:
             self.preview_card.setVisible(False)
             self.lbl_status.setText("⚪ در صورت ادامه، نصب پایه بدون اعمال پکیج آپدیت انجام خواهد شد.")
